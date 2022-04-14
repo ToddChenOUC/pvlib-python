@@ -150,7 +150,7 @@ def _handle_extra_radiation_types(datetime_or_doy, epoch_year):
     return to_doy, to_datetimeindex, to_output
 
 
-def aoi_projection(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
+def aoi_projection(surface_tilt, surface_azimuth, surface_roll, solar_zenith, solar_azimuth):
     """
     Calculates the dot product of the sun position unit vector and the surface
     normal unit vector; in other words, the cosine of the angle of incidence.
@@ -158,14 +158,18 @@ def aoi_projection(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
     Usage note: When the sun is behind the surface the value returned is
     negative.  For many uses negative values must be set to zero.
 
-    Input all angles in degrees.
+    考虑波浪变化对 阵列表面角度变化的影响 其中将对surface_tilt 与 surface_zenith的影响
+    在函数函数体外部进行计算。在此只增加 surface_roll 表面滚转角
 
+    Input all angles in degrees.
     Parameters
     ----------
     surface_tilt : numeric
         Panel tilt from horizontal.
     surface_azimuth : numeric
         Panel azimuth from north.
+    surface_roll: numeric
+        panel roll from horizontal
     solar_zenith : numeric
         Solar zenith angle.
     solar_azimuth : numeric
@@ -178,9 +182,18 @@ def aoi_projection(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
     """
 
     projection = (
-        tools.cosd(surface_tilt) * tools.cosd(solar_zenith) +
-        tools.sind(surface_tilt) * tools.sind(solar_zenith) *
-        tools.cosd(solar_azimuth - surface_azimuth))
+            tools.sind(solar_zenith) * tools.cosd(solar_azimuth) *
+            tools.sind(surface_tilt) * tools.cosd(surface_azimuth) +
+            tools.sind(solar_zenith) * tools.sind(solar_azimuth) *
+            tools.sind(surface_tilt) * tools.sind(surface_azimuth) *
+            tools.cosd(surface_roll) -
+            tools.sind(solar_zenith) * tools.sind(solar_azimuth) *
+            tools.sind(surface_roll) * tools.cosd(surface_tilt) +
+            tools.cosd(solar_zenith) * tools.sind(surface_tilt) *
+            tools.sind(surface_azimuth) * tools.sind(surface_roll) +
+            tools.cosd(solar_zenith) * tools.cosd(surface_roll) *
+            tools.cosd(surface_tilt)
+    )
 
     # GH 1185
     projection = np.clip(projection, -1, 1)
@@ -193,7 +206,7 @@ def aoi_projection(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
     return projection
 
 
-def aoi(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
+def aoi(surface_tilt, surface_azimuth, surface_roll, solar_zenith, solar_azimuth):
     """
     Calculates the angle of incidence of the solar vector on a surface.
     This is the angle between the solar vector and the surface normal.
@@ -206,6 +219,8 @@ def aoi(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
         Panel tilt from horizontal.
     surface_azimuth : numeric
         Panel azimuth from north.
+    surface_roll: numeric
+        panel roll from horizontal
     solar_zenith : numeric
         Solar zenith angle.
     solar_azimuth : numeric
@@ -217,7 +232,7 @@ def aoi(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
         Angle of incidence in degrees.
     """
 
-    projection = aoi_projection(surface_tilt, surface_azimuth,
+    projection = aoi_projection(surface_tilt, surface_azimuth, surface_roll,
                                 solar_zenith, solar_azimuth)
     aoi_value = np.rad2deg(np.arccos(projection))
 
@@ -229,7 +244,7 @@ def aoi(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth):
     return aoi_value
 
 
-def poa_horizontal_ratio(surface_tilt, surface_azimuth,
+def poa_horizontal_ratio(surface_tilt, surface_azimuth, surface_roll,
                          solar_zenith, solar_azimuth):
     """
     Calculates the ratio of the beam components of the plane of array
@@ -243,6 +258,8 @@ def poa_horizontal_ratio(surface_tilt, surface_azimuth,
         Panel tilt from horizontal.
     surface_azimuth : numeric
         Panel azimuth from north.
+    surface_roll: numeric
+        panel roll from horizontal
     solar_zenith : numeric
         Solar zenith angle.
     solar_azimuth : numeric
@@ -255,7 +272,7 @@ def poa_horizontal_ratio(surface_tilt, surface_azimuth,
         irradiance
     """
 
-    cos_poa_zen = aoi_projection(surface_tilt, surface_azimuth,
+    cos_poa_zen = aoi_projection(surface_tilt, surface_azimuth, surface_roll,
                                  solar_zenith, solar_azimuth)
 
     cos_solar_zenith = tools.cosd(solar_zenith)
@@ -271,7 +288,8 @@ def poa_horizontal_ratio(surface_tilt, surface_azimuth,
     return ratio
 
 
-def beam_component(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth,
+def beam_component(surface_tilt, surface_azimuth, surface_roll,
+                   solar_zenith, solar_azimuth,
                    dni):
     """
     Calculates the beam component of the plane of array irradiance.
@@ -282,6 +300,8 @@ def beam_component(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth,
         Panel tilt from horizontal.
     surface_azimuth : numeric
         Panel azimuth from north.
+    surface_roll: numeric
+        panel roll from horizontal
     solar_zenith : numeric
         Solar zenith angle.
     solar_azimuth : numeric
@@ -294,14 +314,14 @@ def beam_component(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth,
     beam : numeric
         Beam component
     """
-    beam = dni * aoi_projection(surface_tilt, surface_azimuth,
+    beam = dni * aoi_projection(surface_tilt, surface_azimuth, surface_roll,
                                 solar_zenith, solar_azimuth)
     beam = np.maximum(beam, 0)
 
     return beam
 
 
-def get_total_irradiance(surface_tilt, surface_azimuth,
+def get_total_irradiance(surface_tilt, surface_azimuth, surface_roll,
                          solar_zenith, solar_azimuth,
                          dni, ghi, dhi, dni_extra=None, airmass=None,
                          albedo=.25, surface_type=None,
@@ -329,6 +349,8 @@ def get_total_irradiance(surface_tilt, surface_azimuth,
         Panel tilt from horizontal. [degree]
     surface_azimuth : numeric
         Panel azimuth from north. [degree]
+    surface_roll: numeric
+        panel roll from horizontal. [degree]
     solar_zenith : numeric
         Solar zenith angle. [degree]
     solar_azimuth : numeric
@@ -378,12 +400,12 @@ def get_total_irradiance(surface_tilt, surface_azimuth,
 
     poa_ground_diffuse = get_ground_diffuse(surface_tilt, ghi, albedo,
                                             surface_type)
-    aoi_ = aoi(surface_tilt, surface_azimuth, solar_zenith, solar_azimuth)
+    aoi_ = aoi(surface_tilt, surface_azimuth, surface_roll, solar_zenith, solar_azimuth)
     irrads = poa_components(aoi_, dni, poa_sky_diffuse, poa_ground_diffuse)
     return irrads
 
 
-def get_sky_diffuse(surface_tilt, surface_azimuth,
+def get_sky_diffuse(surface_tilt, surface_azimuth,surface_roll,
                     solar_zenith, solar_azimuth,
                     dni, ghi, dhi, dni_extra=None, airmass=None,
                     model='isotropic',
@@ -406,6 +428,8 @@ def get_sky_diffuse(surface_tilt, surface_azimuth,
         Panel tilt from horizontal. [degree]
     surface_azimuth : numeric
         Panel azimuth from north. [degree]
+    surface_roll : numeric
+        Panel roll from horizontal. [degree]
     solar_zenith : numeric
         Solar zenith angle. [degree]
     solar_azimuth : numeric
@@ -456,13 +480,16 @@ def get_sky_diffuse(surface_tilt, surface_azimuth,
     if model == 'isotropic':
         sky = isotropic(surface_tilt, dhi)
     elif model == 'klucher':
-        sky = klucher(surface_tilt, surface_azimuth, dhi, ghi,
+        sky = klucher(surface_tilt, surface_azimuth, surface_roll,
+                      dhi, ghi,
                       solar_zenith, solar_azimuth)
     elif model == 'haydavies':
-        sky = haydavies(surface_tilt, surface_azimuth, dhi, dni, dni_extra,
+        sky = haydavies(surface_tilt, surface_azimuth, surface_roll,
+                        dhi, dni, dni_extra,
                         solar_zenith, solar_azimuth)
     elif model == 'reindl':
-        sky = reindl(surface_tilt, surface_azimuth, dhi, dni, ghi, dni_extra,
+        sky = reindl(surface_tilt, surface_azimuth, surface_roll,
+                     dhi, dni, ghi, dni_extra,
                      solar_zenith, solar_azimuth)
     elif model == 'king':
         sky = king(surface_tilt, dhi, ghi, solar_zenith)
@@ -648,7 +675,7 @@ def isotropic(surface_tilt, dhi):
     return sky_diffuse
 
 
-def klucher(surface_tilt, surface_azimuth, dhi, ghi, solar_zenith,
+def klucher(surface_tilt, surface_azimuth,  surface_roll, dhi, ghi, solar_zenith,
             solar_azimuth):
     r'''
     Determine diffuse irradiance from the sky on a tilted surface
@@ -683,6 +710,8 @@ def klucher(surface_tilt, surface_azimuth, dhi, ghi, solar_zenith,
         Surface azimuth angles in decimal degrees. surface_azimuth must
         be >=0 and <=360. The Azimuth convention is defined as degrees
         east of north (e.g. North = 0, South=180 East = 90, West = 270).
+    surface_roll : numeric
+
 
     dhi : numeric
         Diffuse horizontal irradiance in W/m^2. DHI must be >=0.
@@ -715,7 +744,7 @@ def klucher(surface_tilt, surface_azimuth, dhi, ghi, solar_zenith,
     '''
 
     # zenith angle with respect to panel normal.
-    cos_tt = aoi_projection(surface_tilt, surface_azimuth,
+    cos_tt = aoi_projection(surface_tilt, surface_azimuth, surface_roll,
                             solar_zenith, solar_azimuth)
     cos_tt = np.maximum(cos_tt, 0)  # GH 526
 
@@ -738,7 +767,7 @@ def klucher(surface_tilt, surface_azimuth, dhi, ghi, solar_zenith,
     return sky_diffuse
 
 
-def haydavies(surface_tilt, surface_azimuth, dhi, dni, dni_extra,
+def haydavies(surface_tilt, surface_azimuth, surface_roll, dhi, dni, dni_extra,
               solar_zenith=None, solar_azimuth=None, projection_ratio=None):
     r'''
     Determine diffuse irradiance from the sky on a tilted surface using
@@ -765,6 +794,7 @@ def haydavies(surface_tilt, surface_azimuth, dhi, dni, dni_extra,
         Surface azimuth angles in decimal degrees. The azimuth
         convention is defined as degrees east of north (e.g. North=0,
         South=180, East=90, West=270).
+    surface_roll : numeric
 
     dhi : numeric
         Diffuse horizontal irradiance in W/m^2.
@@ -815,7 +845,7 @@ def haydavies(surface_tilt, surface_azimuth, dhi, dni, dni_extra,
 
     # if necessary, calculate ratio of titled and horizontal beam irradiance
     if projection_ratio is None:
-        cos_tt = aoi_projection(surface_tilt, surface_azimuth,
+        cos_tt = aoi_projection(surface_tilt, surface_azimuth, surface_roll,
                                 solar_zenith, solar_azimuth)
         cos_tt = np.maximum(cos_tt, 0)  # GH 526
         cos_solar_zenith = tools.cosd(solar_zenith)
@@ -836,7 +866,7 @@ def haydavies(surface_tilt, surface_azimuth, dhi, dni, dni_extra,
     return sky_diffuse
 
 
-def reindl(surface_tilt, surface_azimuth, dhi, dni, ghi, dni_extra,
+def reindl(surface_tilt, surface_azimuth, surface_roll ,dhi, dni, ghi, dni_extra,
            solar_zenith, solar_azimuth):
     r'''
     Determine diffuse irradiance from the sky on a tilted surface using
@@ -865,6 +895,7 @@ def reindl(surface_tilt, surface_azimuth, dhi, dni, ghi, dni_extra,
         Surface azimuth angles in decimal degrees. The azimuth
         convention is defined as degrees east of north (e.g. North = 0,
         South=180 East = 90, West = 270).
+    surface_roll : numeric
 
     dhi : numeric
         diffuse horizontal irradiance in W/m^2.
@@ -912,7 +943,7 @@ def reindl(surface_tilt, surface_azimuth, dhi, dni, ghi, dni_extra,
        hourly tilted surface radiation models. Solar Energy 45(1), 9-17.
     '''
 
-    cos_tt = aoi_projection(surface_tilt, surface_azimuth,
+    cos_tt = aoi_projection(surface_tilt, surface_azimuth, surface_roll,
                             solar_zenith, solar_azimuth)
     cos_tt = np.maximum(cos_tt, 0)  # GH 526
 
