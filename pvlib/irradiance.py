@@ -405,7 +405,7 @@ def get_total_irradiance(surface_tilt, surface_azimuth, surface_roll,
     return irrads
 
 
-def get_sky_diffuse(surface_tilt, surface_azimuth,surface_roll,
+def get_sky_diffuse(surface_tilt, surface_azimuth, surface_roll,
                     solar_zenith, solar_azimuth,
                     dni, ghi, dhi, dni_extra=None, airmass=None,
                     model='isotropic',
